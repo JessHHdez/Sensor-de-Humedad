@@ -1,4 +1,4 @@
-package com.example.instrumentacion // Asegúrate de que coincida con tu paquete
+package com.example.instrumentacion
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -28,7 +28,7 @@ class MainActivity : AppCompatActivity() {
     private var bluetoothSocket: BluetoothSocket? = null
     private var isConnected = false
 
-    private val deviceAddress = "XX:XX:XX:XX:XX:XX" // Dirección MAC del módulo HC-05
+    private val deviceAddress = "98:D3:31:F5:A3:00" // Dirección MAC del módulo HC-05
     private val myUUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,7 +54,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Verificar permisos
     private fun checkPermissions() {
         val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             arrayOf(
@@ -79,52 +78,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Comprobar si un permiso está otorgado
     private fun hasPermission(permission: String): Boolean {
         return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
     }
 
-    // Conexión Bluetooth
     @SuppressLint("MissingPermission")
     private fun connectToBluetooth() {
-        // Verificar si el adaptador Bluetooth está habilitado
         bluetoothAdapter?.let { adapter ->
             if (!adapter.isEnabled) {
                 showToast("Por favor, activa Bluetooth.")
                 return
             }
 
-            // Verificar permisos para Android 12 o superior
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (!hasPermission(Manifest.permission.BLUETOOTH_SCAN) || !hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
-                    ActivityCompat.requestPermissions(
-                        this,
-                        arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT),
-                        1
-                    )
-                    return
-                }
-            } else { // Para versiones anteriores a Android 12
-                if (!hasPermission(Manifest.permission.BLUETOOTH) || !hasPermission(Manifest.permission.BLUETOOTH_ADMIN)) {
-                    ActivityCompat.requestPermissions(
-                        this,
-                        arrayOf(Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN),
-                        1
-                    )
-                    return
-                }
-            }
-
-            // Intentar conexión Bluetooth si los permisos han sido otorgados
             try {
                 val device: BluetoothDevice = adapter.getRemoteDevice(deviceAddress)
-                    ?: throw Exception("Dispositivo no encontrado")
-
                 bluetoothSocket = device.createRfcommSocketToServiceRecord(myUUID)
                 bluetoothSocket?.connect()
                 isConnected = true
-
-                // Leer datos del Bluetooth
+                showToast("Conexión Bluetooth establecida")
                 readBluetoothData()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -134,7 +105,6 @@ class MainActivity : AppCompatActivity() {
         } ?: showToast("Adaptador Bluetooth no disponible")
     }
 
-    // Desconectar Bluetooth
     private fun disconnectBluetooth() {
         try {
             bluetoothSocket?.close()
@@ -145,7 +115,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Leer datos del módulo Bluetooth
     private fun readBluetoothData() {
         if (!isConnected) return
 
@@ -157,14 +126,8 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val bytesRead = inputStream?.read(buffer) ?: 0
                     if (bytesRead > 0) {
-                        val receivedData = String(buffer, 0, bytesRead)
-                        val humidityValue = extractHumidity(receivedData)
-
-                        // Actualizar la UI en el hilo principal
-                        runOnUiThread {
-                            humidityText.text = "$humidityValue%"
-                            progressBar.progress = humidityValue.toInt()
-                        }
+                        val receivedData = String(buffer, 0, bytesRead).trim()
+                        processReceivedData(receivedData)
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -174,12 +137,22 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    // Extraer el valor de humedad del mensaje recibido
-    private fun extractHumidity(data: String): Float {
-        return data.substringAfter("Humedad: ").substringBefore("%").toFloatOrNull() ?: 0.0f
+    private fun processReceivedData(data: String) {
+        try {
+            // Intentar convertir el dato recibido a un número flotante
+            val humidityValue = data.toFloat()
+
+            // Actualizar la UI en el hilo principal
+            runOnUiThread {
+                humidityText.text = "$humidityValue%"
+                progressBar.progress = humidityValue.toInt()
+            }
+        } catch (e: NumberFormatException) {
+            // Si el dato no es un número válido, ignorarlo
+            e.printStackTrace()
+        }
     }
 
-    // Manejar la respuesta de los permisos
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -195,16 +168,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Mostrar un mensaje al usuario
     private fun showToast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
-    // Cerrar conexión al destruir la actividad
     override fun onDestroy() {
         super.onDestroy()
         disconnectBluetooth()
     }
 }
-
 
